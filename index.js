@@ -15,7 +15,9 @@ The main goal is to facilitate cross-origin requests while enforcing specific se
 
 // Configuration: Whitelist and Blacklist with Environment Variables
 function parseList(envVar, defaultValue = []) {
-    if (!envVar) return defaultValue;
+    if (!envVar || envVar === undefined || envVar === null || envVar?.trim() === '') {
+        return defaultValue;
+    }
     return envVar.split(',').map(item => item.trim()).filter(item => item.length > 0);
 }
 
@@ -26,11 +28,15 @@ function wildcardToRegex(pattern) {
         .replace(/\*/g, '.*'); // Convert * to .*
 }
 
-// Get lists from environment variables or use defaults
-const whitelistUrls = parseList(WHITELIST_URLS, []);        // URLs that are allowed
-const blacklistUrls = parseList(BLACKLIST_URLS, []);        // URLs that are blocked  
-const whitelistOrigins = parseList(WHITELIST_ORIGINS, ["*"]); // Origins that can use proxy
-const blacklistOrigins = parseList(BLACKLIST_ORIGINS, []);  // Origins that are blocked
+// Function to get environment-specific lists
+function getAccessLists(env) {
+    return {
+        whitelistUrls: parseList(env?.WHITELIST_URLS, []),
+        blacklistUrls: parseList(env?.BLACKLIST_URLS, []),
+        whitelistOrigins: parseList(env?.WHITELIST_ORIGINS, []), // Empty = allow all
+        blacklistOrigins: parseList(env?.BLACKLIST_ORIGINS, [])
+    };
+}
 
 // Function to check if a given URI or origin is listed in a pattern list
 function isMatched(uri, listing) {
@@ -50,7 +56,9 @@ function isMatched(uri, listing) {
 }
 
 // Function to check if access should be allowed based on whitelist/blacklist rules
-function isAccessAllowed(targetUrl, originHeader) {
+function isAccessAllowed(targetUrl, originHeader, accessLists) {
+    const { whitelistUrls, blacklistUrls, whitelistOrigins, blacklistOrigins } = accessLists;
+    
     // Check if origin is blacklisted
     if (blacklistOrigins.length > 0 && isMatched(originHeader, blacklistOrigins)) {
         return false;
@@ -74,19 +82,20 @@ function isAccessAllowed(targetUrl, originHeader) {
     return true;
 }
 
-// Event listener for incoming fetch requests
-addEventListener("fetch", async event => {
-    event.respondWith((async function() {
-        const isPreflightRequest = (event.request.method === "OPTIONS");
+// Export fetch handler for Cloudflare Workers
+export default {
+    async fetch(request, env, ctx) {
+        const isPreflightRequest = (request.method === "OPTIONS");
         
-        const originUrl = new URL(event.request.url);
+        const originUrl = new URL(request.url);
+        const accessLists = getAccessLists(env);
 
         // Function to modify headers to enable CORS
         function setupCORSHeaders(headers) {
-            headers.set("Access-Control-Allow-Origin", event.request.headers.get("Origin"));
+            headers.set("Access-Control-Allow-Origin", request.headers.get("Origin"));
             if (isPreflightRequest) {
-                headers.set("Access-Control-Allow-Methods", event.request.headers.get("access-control-request-method"));
-                const requestedHeaders = event.request.headers.get("access-control-request-headers");
+                headers.set("Access-Control-Allow-Methods", request.headers.get("access-control-request-method"));
+                const requestedHeaders = request.headers.get("access-control-request-headers");
 
                 if (requestedHeaders) {
                     headers.set("Access-Control-Allow-Headers", requestedHeaders);
@@ -99,11 +108,11 @@ addEventListener("fetch", async event => {
 
         const targetUrl = decodeURIComponent(decodeURIComponent(originUrl.search.substr(1)));
 
-        const originHeader = event.request.headers.get("Origin");
-        const connectingIp = event.request.headers.get("CF-Connecting-IP");
+        const originHeader = request.headers.get("Origin");
+        const connectingIp = request.headers.get("CF-Connecting-IP");
 
-        if (isAccessAllowed(targetUrl, originHeader)) {
-            let customHeaders = event.request.headers.get("x-cors-headers");
+        if (isAccessAllowed(targetUrl, originHeader, accessLists)) {
+            let customHeaders = request.headers.get("x-cors-headers");
 
             if (customHeaders !== null) {
                 try {
@@ -113,7 +122,7 @@ addEventListener("fetch", async event => {
 
             if (originUrl.search.startsWith("?")) {
                 const filteredHeaders = {};
-                for (const [key, value] of event.request.headers.entries()) {
+                for (const [key, value] of request.headers.entries()) {
                     if (
                         (key.match("^origin") === null) &&
                         (key.match("eferer") === null) &&
@@ -129,7 +138,7 @@ addEventListener("fetch", async event => {
                     Object.entries(customHeaders).forEach((entry) => (filteredHeaders[entry[0]] = entry[1]));
                 }
 
-                const newRequest = new Request(event.request, {
+                const newRequest = new Request(request, {
                     redirect: "follow",
                     headers: filteredHeaders
                 });
@@ -163,9 +172,9 @@ addEventListener("fetch", async event => {
 
                 let country = false;
                 let colo = false;
-                if (typeof event.request.cf !== "undefined") {
-                    country = event.request.cf.country || false;
-                    colo = event.request.cf.colo || false;
+                if (typeof request.cf !== "undefined") {
+                    country = request.cf.country || false;
+                    colo = request.cf.colo || false;
                 }
 
                 return new Response(
@@ -200,5 +209,5 @@ addEventListener("fetch", async event => {
                 }
             );
         }
-    })());
-});
+    }
+};
