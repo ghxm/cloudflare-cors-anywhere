@@ -13,25 +13,65 @@ The script is configurable with whitelist and blacklist patterns, although the b
 The main goal is to facilitate cross-origin requests while enforcing specific security and rate-limiting policies.
 */
 
-// Configuration: Whitelist and Blacklist (not used in this version)
-// whitelist = [ "^http.?://www.zibri.org$", "zibri.org$", "test\\..*" ];  // regexp for whitelisted urls
-const blacklistUrls = [];           // regexp for blacklisted urls
-const whitelistOrigins = [ ".*" ];   // regexp for whitelisted origins
+// Configuration: Whitelist and Blacklist with Environment Variables
+function parseList(envVar, defaultValue = []) {
+    if (!envVar) return defaultValue;
+    return envVar.split(',').map(item => item.trim()).filter(item => item.length > 0);
+}
 
-// Function to check if a given URI or origin is listed in the whitelist or blacklist
-function isListedInWhitelist(uri, listing) {
-    let isListed = false;
-    if (typeof uri === "string") {
-        listing.forEach((pattern) => {
-            if (uri.match(pattern) !== null) {
-                isListed = true;
-            }
-        });
-    } else {
-        // When URI is null (e.g., when Origin header is missing), decide based on the implementation
-        isListed = true; // true accepts null origins, false would reject them
+function wildcardToRegex(pattern) {
+    // Convert wildcard pattern to regex
+    return pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape regex special chars except *
+        .replace(/\*/g, '.*'); // Convert * to .*
+}
+
+// Get lists from environment variables or use defaults
+const whitelistUrls = parseList(WHITELIST_URLS, []);        // URLs that are allowed
+const blacklistUrls = parseList(BLACKLIST_URLS, []);        // URLs that are blocked  
+const whitelistOrigins = parseList(WHITELIST_ORIGINS, ["*"]); // Origins that can use proxy
+const blacklistOrigins = parseList(BLACKLIST_ORIGINS, []);  // Origins that are blocked
+
+// Function to check if a given URI or origin is listed in a pattern list
+function isMatched(uri, listing) {
+    if (!uri || typeof uri !== "string" || listing.length === 0) {
+        return listing.length === 0; // If no patterns, allow; if patterns exist, require match
     }
-    return isListed;
+    
+    return listing.some(pattern => {
+        // Convert wildcard to regex if it contains wildcards
+        if (pattern.includes('*')) {
+            const regexPattern = wildcardToRegex(pattern);
+            return new RegExp(`^${regexPattern}$`, 'i').test(uri);
+        }
+        // Use direct regex pattern if no wildcards
+        return new RegExp(pattern, 'i').test(uri);
+    });
+}
+
+// Function to check if access should be allowed based on whitelist/blacklist rules
+function isAccessAllowed(targetUrl, originHeader) {
+    // Check if origin is blacklisted
+    if (blacklistOrigins.length > 0 && isMatched(originHeader, blacklistOrigins)) {
+        return false;
+    }
+    
+    // Check if target URL is blacklisted  
+    if (blacklistUrls.length > 0 && isMatched(targetUrl, blacklistUrls)) {
+        return false;
+    }
+    
+    // Check if origin is whitelisted (if whitelist exists)
+    if (whitelistOrigins.length > 0 && !isMatched(originHeader, whitelistOrigins)) {
+        return false;
+    }
+    
+    // Check if target URL is whitelisted (if whitelist exists)
+    if (whitelistUrls.length > 0 && !isMatched(targetUrl, whitelistUrls)) {
+        return false;
+    }
+    
+    return true;
 }
 
 // Event listener for incoming fetch requests
@@ -62,7 +102,7 @@ addEventListener("fetch", async event => {
         const originHeader = event.request.headers.get("Origin");
         const connectingIp = event.request.headers.get("CF-Connecting-IP");
 
-        if ((!isListedInWhitelist(targetUrl, blacklistUrls)) && (isListedInWhitelist(originHeader, whitelistOrigins))) {
+        if (isAccessAllowed(targetUrl, originHeader)) {
             let customHeaders = event.request.headers.get("x-cors-headers");
 
             if (customHeaders !== null) {

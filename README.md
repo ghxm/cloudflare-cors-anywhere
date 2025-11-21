@@ -1,16 +1,10 @@
 # cloudflare-cors-anywhere
-Cloudflare CORS proxy in a worker.
 
-CLOUDFLARE-CORS-ANYWHERE
+*forked from [Zibri/clouflare-cors-anywhere](https://github.com/Zibri/cloudflare-cors-anywhere)*
 
-Source:
-https://github.com/Zibri/cloudflare-cors-anywhere
 
-Demo:
-https://test.cors.workers.dev
+Cloudflare CORS proxy in a Cloudflare worker.
 
-Donate:
-https://paypal.me/Zibri/5
 
 Post:
 http://www.zibri.org/2019/07/your-own-cors-anywhere-proxy-on.html
@@ -20,7 +14,7 @@ http://www.zibri.org/2019/07/your-own-cors-anywhere-proxy-on.html
 This project is written in [Cloudfalre Workers](https://workers.cloudflare.com/), and can be easily deployed with [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/).
 
 ```bash
-wrangler deploy
+npx wrangler deploy
 ```
 
 ## Usage Example
@@ -44,17 +38,18 @@ fetch('https://test.cors.workers.dev/?https://httpbin.org/post', {
   return res.json()
 }).then(console.log)
 ```
+  
 
-Note:
+## Access Control
 
-All received headers are also returned in "cors-received-headers" header.
+Configure optional whitelist/blacklist filters via Cloudflare Workers environment variables:
 
-Note about the DEMO url:
+- `WHITELIST_ORIGINS` - Comma-separated allowed origins (e.g., "https://myapp.com,*.mydomain.com")
+- `BLACKLIST_ORIGINS` - Comma-separated blocked origins  
+- `WHITELIST_URLS` - Comma-separated allowed target URLs
+- `BLACKLIST_URLS` - Comma-separated blocked target URLs
 
-Abuse (other than testing) of the demo will result in a ban.  
-The demo accepts only fetch and xmlhttprequest.  
+Supports wildcards: `*.example.com`, `https://api.*/v1/*`, `http://localhost:*`
 
-To create your own is very easy, you just need to set up a cloudflare account and upload the worker code.  
-
-My personal thanks to Damien Collis for his generous and unique donation.    
+Set these in your Cloudflare Workers dashboard under Settings > Variables.
 

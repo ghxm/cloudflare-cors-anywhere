@@ -1,3 +1,17 @@
 name = "cors-anywhere"
 main = "index.js"
 compatibility_date = "2023-04-17"
+
+# Environment variables for access control
+# Configure these in your Cloudflare Workers dashboard under Settings > Variables
+
+# Example configurations (remove comments and set in dashboard):
+# WHITELIST_ORIGINS = "https://myapp.com,https://*.mydomain.com,http://localhost:*"
+# BLACKLIST_ORIGINS = "https://malicious.com,https://*.spammer.net"
+# WHITELIST_URLS = "https://api.example.com/*,https://trusted-service.org/*"
+# BLACKLIST_URLS = "https://blocked-api.com/*,https://*.malicious.net/*"
+
+# Wildcard examples:
+# *.example.com matches any subdomain of example.com
+# https://api.*/v1/* matches any domain with /v1/ path
+# Use * for any characters, exact matches for specific domains
