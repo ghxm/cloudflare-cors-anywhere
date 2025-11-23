@@ -1,6 +1,7 @@
 name = "cors-anywhere"
 main = "index.js"
 compatibility_date = "2023-04-17"
+keep_vars = true
 
 # Environment variables for access control
 # Configure these in your Cloudflare Workers dashboard under Settings > Variables
